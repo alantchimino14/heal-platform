@@ -1,0 +1,1 @@
+{"buildCommand": "cd ../.. && pnpm build --filter=web","outputDirectory": "dist","installCommand": "cd ../.. && pnpm install","framework": "vite"}

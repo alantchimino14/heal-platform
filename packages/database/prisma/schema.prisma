@@ -1,0 +1,863 @@
+// ============================================================================
+// HEAL PLATFORM - Database Schema (Simplificado - Single Tenant)
+// ============================================================================
+
+generator client {
+  provider      = "prisma-client-js"
+  engineType    = "binary"
+  binaryTargets = ["native"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USUARIOS (simplificado, sin auth por ahora)
+// ============================================================================
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  firstName     String
+  lastName      String
+  role          UserRole @default(ADMIN)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relación opcional con profesional
+  profesionalId String?      @unique
+  profesional   Profesional? @relation(fields: [profesionalId], references: [id])
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  PROFESIONAL
+  PACIENTE
+}
+
+// ============================================================================
+// PROFESIONALES (Equipo Heal)
+// ============================================================================
+
+model Profesional {
+  id           String   @id @default(cuid())
+  medilinkId   String?  @unique
+  rut          String?  @unique
+  firstName    String
+  lastName     String
+  email        String?
+  phone        String?
+  especialidad String?
+  color        String?  // Color para calendario
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relaciones existentes
+  user                      User?
+  sesiones                  Sesion[]
+  planesTerapeuticos        PlanTerapeutico[]
+  logsClinicos              LogClinico[]
+  preciosPersonalizados     PrecioServicioProfesional[]
+
+  // Nuevas relaciones - Gestión operativa
+  contratos                 ContratoProfesional[]
+  metasMensuales            MetaMensual[]
+  liquidaciones             Liquidacion[]
+
+  @@map("profesionales")
+}
+
+// ============================================================================
+// CONTRATOS DE PROFESIONALES
+// ============================================================================
+
+model ContratoProfesional {
+  id            String        @id @default(cuid())
+  profesionalId String
+  profesional   Profesional   @relation(fields: [profesionalId], references: [id])
+
+  tipo              TipoContrato
+  fechaInicio       DateTime
+  fechaFin          DateTime?     // null = indefinido
+  horasSemanales    Int?          // Para part-time/full-time
+
+  // Compensación
+  tarifaPorSesion   Decimal?      @db.Decimal(12, 2) // Para honorarios
+  salarioBase       Decimal?      @db.Decimal(12, 2) // Para empleados
+  porcentajeComision Decimal?     @db.Decimal(5, 2)  // % sobre sesiones
+
+  // Bono por meta
+  bonoMetaCumplida  Decimal?      @db.Decimal(12, 2)
+
+  notas             String?
+  isActive          Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([profesionalId])
+  @@index([isActive])
+  @@map("contratos_profesionales")
+}
+
+enum TipoContrato {
+  HONORARIOS        // Boleta de honorarios por sesión
+  PART_TIME         // Contrato parcial
+  FULL_TIME         // Contrato completo
+  PRACTICANTE       // Práctica profesional
+}
+
+// ============================================================================
+// METAS MENSUALES
+// ============================================================================
+
+model MetaMensual {
+  id            String      @id @default(cuid())
+  profesionalId String
+  profesional   Profesional @relation(fields: [profesionalId], references: [id])
+
+  // Período
+  mes           Int         // 1-12
+  anio          Int         // 2024, 2025, etc.
+
+  // Meta
+  sesionesObjetivo    Int
+  sesionesRealizadas  Int       @default(0) // Se actualiza automáticamente
+
+  // Cálculos
+  cumplimiento        Decimal   @default(0) @db.Decimal(5, 2) // Porcentaje
+  metaCumplida        Boolean   @default(false)
+
+  // Bono
+  bonoMonto           Decimal?  @db.Decimal(12, 2) // Monto del bono si cumple
+  bonoOtorgado        Boolean   @default(false)
+
+  notas               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([profesionalId, mes, anio])
+  @@index([anio, mes])
+  @@map("metas_mensuales")
+}
+
+// ============================================================================
+// LIQUIDACIONES MENSUALES
+// ============================================================================
+
+model Liquidacion {
+  id            String      @id @default(cuid())
+  profesionalId String
+  profesional   Profesional @relation(fields: [profesionalId], references: [id])
+
+  // Período
+  mes           Int
+  anio          Int
+
+  // Número correlativo
+  numero        Int         @unique @default(autoincrement())
+
+  // Resumen de sesiones
+  sesionesTotales     Int       @default(0)
+  sesionesRealizadas  Int       @default(0)
+
+  // Montos
+  ingresosSesiones    Decimal   @default(0) @db.Decimal(12, 2)
+  ingresosComision    Decimal   @default(0) @db.Decimal(12, 2)
+  bonoMeta            Decimal   @default(0) @db.Decimal(12, 2)
+  otrosBonos          Decimal   @default(0) @db.Decimal(12, 2)
+  descuentos          Decimal   @default(0) @db.Decimal(12, 2)
+  anticipos           Decimal   @default(0) @db.Decimal(12, 2)
+
+  // Totales
+  totalBruto          Decimal   @db.Decimal(12, 2)
+  totalDescuentos     Decimal   @default(0) @db.Decimal(12, 2)
+  totalLiquido        Decimal   @db.Decimal(12, 2)
+
+  // Estado
+  estado              EstadoLiquidacion @default(BORRADOR)
+
+  // Fechas importantes
+  fechaGeneracion     DateTime  @default(now())
+  fechaAprobacion     DateTime?
+  fechaPago           DateTime?
+
+  // Pago
+  metodoPago          MetodoPago?
+  referenciaPago      String?
+
+  notas               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Detalle
+  items               LiquidacionItem[]
+
+  @@unique([profesionalId, mes, anio])
+  @@index([estado])
+  @@index([anio, mes])
+  @@map("liquidaciones")
+}
+
+model LiquidacionItem {
+  id            String      @id @default(cuid())
+  liquidacionId String
+  liquidacion   Liquidacion @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+
+  tipo          TipoItemLiquidacion
+  concepto      String
+  descripcion   String?
+  cantidad      Int?
+  valorUnitario Decimal?    @db.Decimal(12, 2)
+  monto         Decimal     @db.Decimal(12, 2)
+  esDescuento   Boolean     @default(false)
+
+  // Referencia opcional a sesión
+  sesionId      String?
+
+  createdAt     DateTime    @default(now())
+
+  @@index([liquidacionId])
+  @@map("liquidacion_items")
+}
+
+enum EstadoLiquidacion {
+  BORRADOR      // En preparación
+  PENDIENTE     // Lista para revisión
+  APROBADA      // Aprobada por admin
+  PAGADA        // Pagada al profesional
+  RECHAZADA     // Rechazada/con correcciones
+}
+
+enum TipoItemLiquidacion {
+  SESION              // Pago por sesión individual
+  BONO_META           // Bono por cumplimiento de meta
+  BONO_OTRO           // Otros bonos
+  COMISION            // Comisión sobre ventas/sesiones
+  DESCUENTO           // Descuento aplicado
+  ANTICIPO            // Anticipo descontado
+  AJUSTE              // Ajuste manual
+}
+
+// ============================================================================
+// PACIENTES
+// ============================================================================
+
+model Paciente {
+  id         String    @id @default(cuid())
+  medilinkId String?   @unique
+  rut        String?   @unique
+  firstName  String
+  lastName   String
+  email      String?
+  phone      String?
+  birthDate  DateTime?
+  gender     String?
+  address    String?
+  comuna     String?
+  ciudad     String?
+  prevision  String?
+
+  // Estado financiero (calculado)
+  saldoPendiente Decimal @default(0) @db.Decimal(12, 2)
+  saldoAFavor    Decimal @default(0) @db.Decimal(12, 2)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  sesiones           Sesion[]
+  pagos              Pago[]
+  planesTerapeuticos PlanTerapeutico[]
+  boletas            Boleta[]
+  ventas             Venta[]
+
+  @@map("pacientes")
+}
+
+// ============================================================================
+// SERVICIOS (Tipos de atención)
+// ============================================================================
+
+model Servicio {
+  id              String           @id @default(cuid())
+  medilinkId      String?          @unique
+  codigo          String?          @unique
+  nombre          String
+  descripcion     String?
+  categoria       CategoriaServicio @default(KINESIOLOGIA)
+  precio          Decimal          @db.Decimal(12, 2)
+  duracionMinutos Int              @default(30)
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  sesiones                  Sesion[]
+  preciosPorProfesional     PrecioServicioProfesional[]
+
+  @@map("servicios")
+}
+
+enum CategoriaServicio {
+  KINESIOLOGIA
+  ENTRENAMIENTO
+  EVALUACION
+  OTRO
+}
+
+// Precios personalizados por profesional
+model PrecioServicioProfesional {
+  id            String      @id @default(cuid())
+  servicioId    String
+  servicio      Servicio    @relation(fields: [servicioId], references: [id], onDelete: Cascade)
+  profesionalId String
+  profesional   Profesional @relation(fields: [profesionalId], references: [id], onDelete: Cascade)
+  precio        Decimal     @db.Decimal(12, 2)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([servicioId, profesionalId])
+  @@map("precios_servicio_profesional")
+}
+
+// ============================================================================
+// SESIONES
+// ============================================================================
+
+model Sesion {
+  id                 String  @id @default(cuid())
+  medilinkId         String? @unique
+  medilinkAtencionId String? @unique
+
+  // Relaciones principales
+  pacienteId    String
+  paciente      Paciente     @relation(fields: [pacienteId], references: [id])
+  profesionalId String
+  profesional   Profesional  @relation(fields: [profesionalId], references: [id])
+  servicioId    String?
+  servicio      Servicio?    @relation(fields: [servicioId], references: [id])
+
+  // Plan terapéutico (opcional)
+  planTerapeuticoId String?
+  planTerapeutico   PlanTerapeutico? @relation(fields: [planTerapeuticoId], references: [id])
+
+  // Datos de la sesión
+  fechaHora       DateTime
+  duracionMinutos Int      @default(30)
+
+  // Precio
+  precioBase  Decimal @db.Decimal(12, 2)
+  descuento   Decimal @default(0) @db.Decimal(12, 2)
+  precioFinal Decimal @db.Decimal(12, 2)
+
+  // Estados (libres, sin restricción de transición)
+  estadoAgenda   EstadoAgenda   @default(AGENDADA)
+  estadoAtencion EstadoAtencion @default(PENDIENTE)
+  estadoPago     EstadoPago     @default(NO_PAGADA)
+  estadoBoleta   EstadoBoleta   @default(NO_EMITIDA)
+
+  // Datos clínicos
+  motivoConsulta String?
+  diagnostico    String?
+  observaciones  String?
+
+  // Monto pagado (calculado de pagos asociados)
+  montoPagado Decimal @default(0) @db.Decimal(12, 2)
+
+  // Boleta asociada
+  boletaId String?
+  boleta   Boleta? @relation(fields: [boletaId], references: [id])
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  syncedAt  DateTime?
+
+  // Relaciones
+  pagos        PagoSesion[]
+  logsClinicos LogClinico[]
+
+  @@index([pacienteId])
+  @@index([profesionalId])
+  @@index([fechaHora])
+  @@index([estadoPago])
+  @@map("sesiones")
+}
+
+enum EstadoAgenda {
+  AGENDADA
+  CONFIRMADA
+  CANCELADA
+  NO_SHOW
+}
+
+enum EstadoAtencion {
+  PENDIENTE
+  EN_CURSO
+  REALIZADA
+  CANCELADA
+}
+
+enum EstadoPago {
+  NO_PAGADA
+  PAGO_PARCIAL
+  PAGADA
+  REEMBOLSADA
+}
+
+enum EstadoBoleta {
+  NO_EMITIDA
+  EMITIDA
+  ANULADA
+}
+
+// ============================================================================
+// PAGOS
+// ============================================================================
+
+model Pago {
+  id         String @id @default(cuid())
+  numeroPago Int    @unique @default(autoincrement())
+
+  // Paciente
+  pacienteId String
+  paciente   Paciente @relation(fields: [pacienteId], references: [id])
+
+  // Monto
+  monto           Decimal @db.Decimal(12, 2)
+  montoAplicado   Decimal @default(0) @db.Decimal(12, 2)
+  saldoDisponible Decimal @default(0) @db.Decimal(12, 2)
+
+  // Método de pago
+  metodoPago MetodoPago
+  referencia String?
+
+  // Estado
+  estado EstadoPago2 @default(CONFIRMADO)
+
+  // Tipo
+  tipoPago TipoPago @default(SESION_INDIVIDUAL)
+
+  // Detalles
+  descripcion String?
+  notas       String?
+
+  // Fechas
+  fechaPago DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Sesiones pagadas
+  sesiones PagoSesion[]
+
+  @@index([pacienteId])
+  @@index([fechaPago])
+  @@map("pagos")
+}
+
+enum MetodoPago {
+  EFECTIVO
+  REDCOMPRA_DEBITO
+  REDCOMPRA_CREDITO
+  TRANSFERENCIA
+}
+
+enum EstadoPago2 {
+  PENDIENTE
+  CONFIRMADO
+  RECHAZADO
+  REEMBOLSADO
+  ANULADO
+}
+
+enum TipoPago {
+  SESION_INDIVIDUAL
+  SESIONES_MULTIPLES
+  PACK
+  PLAN_COMPLETO
+  ANTICIPO
+  SALDO
+}
+
+// Tabla intermedia: Pago <-> Sesión
+model PagoSesion {
+  id       String @id @default(cuid())
+  pagoId   String
+  pago     Pago   @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+  sesionId String
+  sesion   Sesion @relation(fields: [sesionId], references: [id])
+
+  montoAplicado Decimal  @db.Decimal(12, 2)
+  createdAt     DateTime @default(now())
+
+  @@unique([pagoId, sesionId])
+  @@map("pagos_sesiones")
+}
+
+// ============================================================================
+// BOLETAS / FACTURAS
+// ============================================================================
+
+model Boleta {
+  id         String  @id @default(cuid())
+  medilinkId String? @unique
+
+  pacienteId String
+  paciente   Paciente @relation(fields: [pacienteId], references: [id])
+
+  tipo       TipoDocumento  @default(BOLETA)
+  numero     String         @unique
+  fecha      DateTime
+  montoNeto  Decimal        @db.Decimal(12, 2)
+  iva        Decimal        @default(0) @db.Decimal(12, 2)
+  montoTotal Decimal        @db.Decimal(12, 2)
+  estado     EstadoBoleta2  @default(EMITIDA)
+  pdfUrl     String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  syncedAt  DateTime?
+
+  sesiones Sesion[]
+
+  @@index([pacienteId])
+  @@map("boletas")
+}
+
+enum TipoDocumento {
+  BOLETA
+  FACTURA
+  NOTA_CREDITO
+}
+
+enum EstadoBoleta2 {
+  EMITIDA
+  ANULADA
+}
+
+// ============================================================================
+// PLANES TERAPÉUTICOS
+// ============================================================================
+
+model PlanTerapeutico {
+  id String @id @default(cuid())
+
+  pacienteId    String
+  paciente      Paciente    @relation(fields: [pacienteId], references: [id])
+  profesionalId String
+  profesional   Profesional @relation(fields: [profesionalId], references: [id])
+
+  nombre               String
+  descripcion          String?
+  diagnostico          String?
+  objetivoGeneral      String?
+  objetivosEspecificos String[]
+
+  sesionesObjetivo  Int
+  frecuenciaSemanal Int?
+
+  fechaInicio      DateTime
+  fechaFinEstimada DateTime?
+  fechaFinReal     DateTime?
+
+  estado EstadoPlan @default(ACTIVO)
+
+  // Métricas (calculadas)
+  sesionesRealizadas Int     @default(0)
+  porcentajeAvance   Decimal @default(0) @db.Decimal(5, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sesiones     Sesion[]
+  logsClinicos LogClinico[]
+  evaluaciones Evaluacion[]
+
+  @@index([pacienteId])
+  @@index([estado])
+  @@map("planes_terapeuticos")
+}
+
+enum EstadoPlan {
+  BORRADOR
+  ACTIVO
+  PAUSADO
+  COMPLETADO
+  ABANDONADO
+  CANCELADO
+}
+
+// ============================================================================
+// LOGS CLÍNICOS (Evolución)
+// ============================================================================
+
+model LogClinico {
+  id String @id @default(cuid())
+
+  sesionId          String?
+  sesion            Sesion?          @relation(fields: [sesionId], references: [id])
+  planTerapeuticoId String?
+  planTerapeutico   PlanTerapeutico? @relation(fields: [planTerapeuticoId], references: [id])
+  profesionalId     String
+  profesional       Profesional      @relation(fields: [profesionalId], references: [id])
+
+  tipo               TipoLogClinico
+  titulo             String?
+  contenido          String           @db.Text
+  datosEstructurados Json?
+  visiblePaciente    Boolean          @default(false)
+  adjuntos           String[]
+
+  fecha     DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sesionId])
+  @@index([planTerapeuticoId])
+  @@map("logs_clinicos")
+}
+
+enum TipoLogClinico {
+  NOTA_SESION
+  EVOLUCION
+  EVALUACION
+  OBJETIVO_LOGRADO
+  ALERTA
+  INTERCONSULTA
+  OTRO
+}
+
+// ============================================================================
+// EVALUACIONES
+// ============================================================================
+
+model Evaluacion {
+  id String @id @default(cuid())
+
+  planTerapeuticoId String
+  planTerapeutico   PlanTerapeutico @relation(fields: [planTerapeuticoId], references: [id])
+
+  tipo           String
+  nombre         String
+  puntaje        Decimal? @db.Decimal(10, 2)
+  puntajeMaximo  Decimal? @db.Decimal(10, 2)
+  interpretacion String?
+  respuestas     Json?
+
+  fecha     DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([planTerapeuticoId])
+  @@map("evaluaciones")
+}
+
+// ============================================================================
+// SYNC LOGS (para Medilink)
+// ============================================================================
+
+model SyncLog {
+  id             String     @id @default(cuid())
+  entityType     String
+  status         SyncStatus
+  itemsProcessed Int        @default(0)
+  itemsCreated   Int        @default(0)
+  itemsUpdated   Int        @default(0)
+  itemsSkipped   Int        @default(0)
+  errors         Json?
+  startedAt      DateTime
+  completedAt    DateTime?
+
+  @@index([entityType])
+  @@index([startedAt])
+  @@map("sync_logs")
+}
+
+enum SyncStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+// ============================================================================
+// CONFIGURACIÓN
+// ============================================================================
+
+model Config {
+  id    String @id @default(cuid())
+  key   String @unique
+  value Json
+
+  updatedAt DateTime @updatedAt
+
+  @@map("config")
+}
+
+// ============================================================================
+// PRODUCTOS (Productos físicos para venta)
+// ============================================================================
+
+model Producto {
+  id          String   @id @default(cuid())
+  codigo      String?  @unique
+  nombre      String
+  descripcion String?
+  categoria   String?
+  precio      Decimal  @db.Decimal(12, 2)
+  costo       Decimal? @db.Decimal(12, 2)
+  stock       Int      @default(0)
+  stockMinimo Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ventaItems VentaItem[]
+
+  @@map("productos")
+}
+
+// ============================================================================
+// VENTAS (Ventas de productos, con o sin cliente)
+// ============================================================================
+
+model Venta {
+  id          String   @id @default(cuid())
+  numeroVenta Int?     @unique
+
+  // Cliente (opcional - puede ser venta sin cliente)
+  pacienteId String?
+  paciente   Paciente? @relation(fields: [pacienteId], references: [id])
+
+  // Totales
+  subtotal   Decimal @db.Decimal(12, 2)
+  descuento  Decimal @default(0) @db.Decimal(12, 2)
+  total      Decimal @db.Decimal(12, 2)
+
+  // Pago
+  metodoPago MetodoPago
+  referencia String?
+  estado     EstadoVenta @default(COMPLETADA)
+
+  // Detalles
+  descripcion String?
+  notas       String?
+
+  // Fechas
+  fechaVenta DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Items de la venta
+  items VentaItem[]
+
+  @@index([pacienteId])
+  @@index([fechaVenta])
+  @@map("ventas")
+}
+
+model VentaItem {
+  id        String @id @default(cuid())
+  ventaId   String
+  venta     Venta  @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+
+  // Producto vendido
+  productoId String
+  producto   Producto @relation(fields: [productoId], references: [id])
+
+  // Detalles
+  cantidad     Int
+  precioUnit   Decimal @db.Decimal(12, 2)
+  descuento    Decimal @default(0) @db.Decimal(12, 2)
+  total        Decimal @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+
+  @@map("venta_items")
+}
+
+enum EstadoVenta {
+  COMPLETADA
+  ANULADA
+  PENDIENTE
+}
+
+// ============================================================================
+// IMPORTACIÓN TRANSBANK (Conciliación)
+// ============================================================================
+
+model ImportacionTransbank {
+  id              String    @id @default(cuid())
+  nombreArchivo   String
+  fechaImportacion DateTime @default(now())
+
+  // Período del archivo
+  fechaDesde      DateTime?
+  fechaHasta      DateTime?
+
+  // Stats
+  totalTransacciones  Int       @default(0)
+  totalMonto          Decimal   @default(0) @db.Decimal(12, 2)
+  transaccionesConciliadas Int  @default(0)
+  transaccionesPendientes  Int  @default(0)
+
+  estado          EstadoImportacion @default(PROCESANDO)
+  errores         Json?
+
+  createdAt       DateTime  @default(now())
+
+  transacciones   TransaccionTransbank[]
+
+  @@map("importaciones_transbank")
+}
+
+model TransaccionTransbank {
+  id              String    @id @default(cuid())
+  importacionId   String
+  importacion     ImportacionTransbank @relation(fields: [importacionId], references: [id], onDelete: Cascade)
+
+  // Datos de Transbank
+  fechaTransaccion    DateTime
+  numeroOperacion     String?
+  codigoAutorizacion  String?
+  tipoTarjeta         String?   // Débito, Crédito
+  ultimosDigitos      String?   // Últimos 4 dígitos tarjeta
+  monto               Decimal   @db.Decimal(12, 2)
+  cuotas              Int?
+
+  // Conciliación
+  estadoConciliacion  EstadoConciliacion @default(PENDIENTE)
+  pagoIdConciliado    String?   // ID del pago en Heal que coincide
+  ventaIdConciliada   String?   // ID de venta si aplica
+  diferenciaMonto     Decimal?  @db.Decimal(12, 2) // Si hay diferencia
+
+  notasConciliacion   String?
+  fechaConciliacion   DateTime?
+
+  createdAt           DateTime  @default(now())
+
+  @@index([importacionId])
+  @@index([estadoConciliacion])
+  @@index([fechaTransaccion])
+  @@map("transacciones_transbank")
+}
+
+enum EstadoImportacion {
+  PROCESANDO
+  COMPLETADA
+  ERROR
+}
+
+enum EstadoConciliacion {
+  PENDIENTE         // Sin conciliar
+  CONCILIADA        // Match exacto encontrado
+  DIFERENCIA        // Match con diferencia de monto
+  SIN_MATCH         // No se encontró pago correspondiente
+  IGNORADA          // Marcada para ignorar (ej: devolución)
+}

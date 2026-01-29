@@ -1,0 +1,19 @@
+# Solo para desarrollo local si no quieres usar Supabase
+# Uso: docker-compose up -d
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: heal-postgres
+    environment:
+      POSTGRES_USER: heal
+      POSTGRES_PASSWORD: heal_dev_password
+      POSTGRES_DB: heal_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

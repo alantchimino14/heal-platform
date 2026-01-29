@@ -1,0 +1,728 @@
+// ============================================================================
+// HEAL PLATFORM - Database Schema
+// Base de datos PostgreSQL con Prisma ORM
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// MULTI-TENANCY
+// ============================================================================
+
+model Tenant {
+  id                String   @id @default(cuid())
+  name              String   // Nombre del centro de kinesiología
+  slug              String   @unique // URL-friendly identifier
+  rut               String?  // RUT del centro (Chile)
+  address           String?
+  phone             String?
+  email             String?
+  logo              String?  // URL del logo
+
+  // Configuración Medilink
+  medilinkApiUrl    String?
+  medilinkApiKey    String?  // Encriptado
+  medilinkEnabled   Boolean  @default(false)
+  lastMedilinkSync  DateTime?
+
+  // Configuración
+  timezone          String   @default("America/Santiago")
+  currency          String   @default("CLP")
+
+  // Estado
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relaciones
+  users             User[]
+  pacientes         Paciente[]
+  profesionales     Profesional[]
+  sesiones          Sesion[]
+  pagos             Pago[]
+  planesTerapeuticos PlanTerapeutico[]
+  boletas           Boleta[]
+  servicios         Servicio[]
+
+  @@map("tenants")
+}
+
+// ============================================================================
+// AUTENTICACIÓN Y USUARIOS
+// ============================================================================
+
+model User {
+  id                String   @id @default(cuid())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+
+  email             String
+  passwordHash      String
+
+  firstName         String
+  lastName          String
+  phone             String?
+  avatar            String?
+
+  role              UserRole
+  isActive          Boolean  @default(true)
+  emailVerified     Boolean  @default(false)
+
+  // Relación opcional con profesional o paciente
+  profesionalId     String?  @unique
+  profesional       Profesional? @relation(fields: [profesionalId], references: [id])
+  pacienteId        String?  @unique
+  paciente          Paciente? @relation(fields: [pacienteId], references: [id])
+
+  // Sesiones de login
+  sessions          UserSession[]
+
+  // Auditoría
+  lastLogin         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdBy         String?
+
+  // Logs de acciones
+  auditLogs         AuditLog[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+enum UserRole {
+  SUPER_ADMIN    // Admin de la plataforma Heal
+  ADMIN          // Admin del centro de kinesiología
+  PROFESIONAL    // Kinesiólogo
+  RECEPCIONISTA  // Solo agenda y pagos
+  PACIENTE       // Portal paciente (fase 2)
+}
+
+model UserSession {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+
+  token        String   @unique
+  refreshToken String   @unique
+
+  userAgent    String?
+  ipAddress    String?
+
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@map("user_sessions")
+}
+
+// ============================================================================
+// PROFESIONALES (Kinesiólogos)
+// ============================================================================
+
+model Profesional {
+  id                String   @id @default(cuid())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+
+  // Identificador externo de Medilink
+  medilinkId        String?
+
+  rut               String?
+  firstName         String
+  lastName          String
+  email             String?
+  phone             String?
+
+  especialidad      String?  // Ej: "Traumatología", "Deportiva", etc.
+  registroSIS       String?  // Registro Superintendencia de Salud
+
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relaciones
+  user              User?
+  sesiones          Sesion[]
+  planesTerapeuticos PlanTerapeutico[]
+  logsClinicos      LogClinico[]
+
+  @@unique([tenantId, medilinkId])
+  @@unique([tenantId, rut])
+  @@map("profesionales")
+}
+
+// ============================================================================
+// PACIENTES
+// ============================================================================
+
+model Paciente {
+  id                String   @id @default(cuid())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+
+  // Identificador externo de Medilink
+  medilinkId        String?
+
+  rut               String?
+  firstName         String
+  lastName          String
+  email             String?
+  phone             String?
+
+  // Datos demográficos
+  birthDate         DateTime?
+  gender            String?
+  address           String?
+  comuna            String?
+  ciudad            String?
+
+  // Datos médicos generales
+  prevision         String?  // FONASA, ISAPRE, etc.
+  fichaClinica      String?  // Referencia a ficha en Medilink
+
+  // Estado financiero (calculado)
+  saldoPendiente    Decimal  @default(0) @db.Decimal(12, 2)
+  saldoAFavor       Decimal  @default(0) @db.Decimal(12, 2)
+
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relaciones
+  user              User?
+  sesiones          Sesion[]
+  pagos             Pago[]
+  planesTerapeuticos PlanTerapeutico[]
+  boletas           Boleta[]
+
+  @@unique([tenantId, medilinkId])
+  @@unique([tenantId, rut])
+  @@map("pacientes")
+}
+
+// ============================================================================
+// SERVICIOS (Tipos de atención)
+// ============================================================================
+
+model Servicio {
+  id                String   @id @default(cuid())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+
+  medilinkId        String?
+
+  codigo            String?
+  nombre            String
+  descripcion       String?
+
+  precio            Decimal  @db.Decimal(12, 2)
+  duracionMinutos   Int      @default(30)
+
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relaciones
+  sesiones          Sesion[]
+
+  @@unique([tenantId, medilinkId])
+  @@unique([tenantId, codigo])
+  @@map("servicios")
+}
+
+// ============================================================================
+// SESIONES
+// ============================================================================
+
+model Sesion {
+  id                String   @id @default(cuid())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+
+  // Identificador externo de Medilink
+  medilinkId        String?  // ID de la cita en Medilink
+  medilinkAtencionId String? // ID de la atención (cuando se realiza)
+
+  // Relaciones principales
+  pacienteId        String
+  paciente          Paciente @relation(fields: [pacienteId], references: [id])
+  profesionalId     String
+  profesional       Profesional @relation(fields: [profesionalId], references: [id])
+  servicioId        String?
+  servicio          Servicio? @relation(fields: [servicioId], references: [id])
+
+  // Plan terapéutico (opcional)
+  planTerapeuticoId String?
+  planTerapeutico   PlanTerapeutico? @relation(fields: [planTerapeuticoId], references: [id])
+
+  // Datos de la sesión
+  fechaHora         DateTime
+  duracionMinutos   Int      @default(30)
+
+  // Precio
+  precioBase        Decimal  @db.Decimal(12, 2)
+  descuento         Decimal  @default(0) @db.Decimal(12, 2)
+  precioFinal       Decimal  @db.Decimal(12, 2)
+
+  // Estados (ver state machine)
+  estadoAgenda      EstadoAgenda      @default(AGENDADA)
+  estadoAtencion    EstadoAtencion    @default(PENDIENTE)
+  estadoPago        EstadoPago        @default(NO_PAGADA)
+  estadoBoleta      EstadoBoleta      @default(NO_EMITIDA)
+
+  // Datos de Medilink
+  motivoConsulta    String?
+  diagnostico       String?
+  observaciones     String?
+
+  // Datos de pago (referencia)
+  montoPagado       Decimal  @default(0) @db.Decimal(12, 2)
+
+  // Boleta asociada
+  boletaId          String?
+  boleta            Boleta?  @relation(fields: [boletaId], references: [id])
+
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  syncedAt          DateTime? // Última sincronización con Medilink
+
+  // Relaciones
+  pagos             PagoSesion[]
+  logsClinicos      LogClinico[]
+
+  @@unique([tenantId, medilinkId])
+  @@index([tenantId, pacienteId])
+  @@index([tenantId, profesionalId])
+  @@index([tenantId, fechaHora])
+  @@index([tenantId, estadoPago])
+  @@map("sesiones")
+}
+
+enum EstadoAgenda {
+  AGENDADA      // Cita agendada en Medilink
+  CONFIRMADA    // Paciente confirmó asistencia
+  CANCELADA     // Cita cancelada
+  NO_SHOW       // Paciente no llegó
+}
+
+enum EstadoAtencion {
+  PENDIENTE     // Aún no ocurre
+  EN_CURSO      // En atención
+  REALIZADA     // Atención completada
+  CANCELADA     // Atención cancelada
+}
+
+enum EstadoPago {
+  NO_PAGADA     // Sin pago registrado
+  PAGO_PARCIAL  // Pago parcial registrado
+  PAGADA        // Completamente pagada
+  REEMBOLSADA   // Pago devuelto
+}
+
+enum EstadoBoleta {
+  NO_EMITIDA    // Sin boleta
+  EMITIDA       // Boleta emitida en Medilink
+  ANULADA       // Boleta anulada
+}
+
+// ============================================================================
+// PAGOS
+// ============================================================================
+
+model Pago {
+  id                String   @id @default(cuid())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+
+  // Número de pago (secuencial por tenant)
+  numeroPago        Int
+
+  // Paciente
+  pacienteId        String
+  paciente          Paciente @relation(fields: [pacienteId], references: [id])
+
+  // Monto
+  monto             Decimal  @db.Decimal(12, 2)
+  montoAplicado     Decimal  @default(0) @db.Decimal(12, 2)
+  saldoDisponible   Decimal  @default(0) @db.Decimal(12, 2) // Para pagos anticipados
+
+  // Método de pago
+  metodoPago        MetodoPago
+  referencia        String?  // Nro transacción, cheque, etc.
+
+  // Estado
+  estado            EstadoPago2 @default(CONFIRMADO)
+
+  // Tipo de pago
+  tipoPago          TipoPago @default(SESION_INDIVIDUAL)
+
+  // Detalles
+  descripcion       String?
+  notas             String?
+
+  // Auditoría
+  registradoPor     String?  // userId
+  fechaPago         DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relaciones
+  sesiones          PagoSesion[]
+
+  @@unique([tenantId, numeroPago])
+  @@index([tenantId, pacienteId])
+  @@index([tenantId, fechaPago])
+  @@map("pagos")
+}
+
+enum MetodoPago {
+  EFECTIVO
+  DEBITO
+  CREDITO
+  TRANSFERENCIA
+  CHEQUE
+  OTRO
+}
+
+enum EstadoPago2 {
+  PENDIENTE     // Pago registrado pero no confirmado
+  CONFIRMADO    // Pago confirmado
+  RECHAZADO     // Pago rechazado (ej: cheque sin fondos)
+  REEMBOLSADO   // Pago devuelto
+  ANULADO       // Pago anulado
+}
+
+enum TipoPago {
+  SESION_INDIVIDUAL   // Pago por una sesión
+  SESIONES_MULTIPLES  // Pago por varias sesiones
+  PACK                // Pago por pack de sesiones
+  PLAN_COMPLETO       // Pago por plan terapéutico
+  ANTICIPO            // Pago anticipado (a cuenta)
+  SALDO               // Pago de saldo pendiente
+}
+
+// Tabla intermedia: Relación Pago <-> Sesión
+model PagoSesion {
+  id                String   @id @default(cuid())
+
+  pagoId            String
+  pago              Pago     @relation(fields: [pagoId], references: [id])
+  sesionId          String
+  sesion            Sesion   @relation(fields: [sesionId], references: [id])
+
+  // Monto aplicado a esta sesión específica
+  montoAplicado     Decimal  @db.Decimal(12, 2)
+
+  createdAt         DateTime @default(now())
+
+  @@unique([pagoId, sesionId])
+  @@map("pagos_sesiones")
+}
+
+// ============================================================================
+// BOLETAS / FACTURAS
+// ============================================================================
+
+model Boleta {
+  id                String   @id @default(cuid())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+
+  // Identificador externo de Medilink
+  medilinkId        String?
+
+  // Paciente
+  pacienteId        String
+  paciente          Paciente @relation(fields: [pacienteId], references: [id])
+
+  // Datos del documento
+  tipo              TipoDocumento @default(BOLETA)
+  numero            String
+  fecha             DateTime
+
+  // Montos
+  montoNeto         Decimal  @db.Decimal(12, 2)
+  iva               Decimal  @default(0) @db.Decimal(12, 2)
+  montoTotal        Decimal  @db.Decimal(12, 2)
+
+  // Estado
+  estado            EstadoBoleta2 @default(EMITIDA)
+
+  // PDF
+  pdfUrl            String?
+
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  syncedAt          DateTime?
+
+  // Sesiones cubiertas por esta boleta
+  sesiones          Sesion[]
+
+  @@unique([tenantId, medilinkId])
+  @@unique([tenantId, tipo, numero])
+  @@index([tenantId, pacienteId])
+  @@map("boletas")
+}
+
+enum TipoDocumento {
+  BOLETA
+  FACTURA
+  NOTA_CREDITO
+}
+
+enum EstadoBoleta2 {
+  EMITIDA
+  ANULADA
+}
+
+// ============================================================================
+// PLANES TERAPÉUTICOS
+// ============================================================================
+
+model PlanTerapeutico {
+  id                String   @id @default(cuid())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+
+  // Relaciones
+  pacienteId        String
+  paciente          Paciente @relation(fields: [pacienteId], references: [id])
+  profesionalId     String
+  profesional       Profesional @relation(fields: [profesionalId], references: [id])
+
+  // Datos del plan
+  nombre            String
+  descripcion       String?
+
+  // Diagnóstico y objetivos
+  diagnostico       String?
+  objetivoGeneral   String?
+  objetivosEspecificos String[] // Array de objetivos
+
+  // Configuración
+  sesionesObjetivo  Int      // Número de sesiones planificadas
+  frecuenciaSemanal Int?     // Sesiones por semana sugeridas
+
+  // Fechas
+  fechaInicio       DateTime
+  fechaFinEstimada  DateTime?
+  fechaFinReal      DateTime?
+
+  // Estado
+  estado            EstadoPlan @default(ACTIVO)
+
+  // Métricas (calculadas)
+  sesionesRealizadas Int     @default(0)
+  porcentajeAvance  Decimal  @default(0) @db.Decimal(5, 2)
+
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relaciones
+  sesiones          Sesion[]
+  logsClinicos      LogClinico[]
+  evaluaciones      Evaluacion[]
+
+  @@index([tenantId, pacienteId])
+  @@index([tenantId, estado])
+  @@map("planes_terapeuticos")
+}
+
+enum EstadoPlan {
+  BORRADOR      // Plan en creación
+  ACTIVO        // Plan en ejecución
+  PAUSADO       // Plan pausado temporalmente
+  COMPLETADO    // Plan finalizado exitosamente
+  ABANDONADO    // Paciente abandonó tratamiento
+  CANCELADO     // Plan cancelado
+}
+
+// ============================================================================
+// LOGS CLÍNICOS (Evolución)
+// ============================================================================
+
+model LogClinico {
+  id                String   @id @default(cuid())
+
+  // Relaciones
+  sesionId          String?
+  sesion            Sesion?  @relation(fields: [sesionId], references: [id])
+  planTerapeuticoId String?
+  planTerapeutico   PlanTerapeutico? @relation(fields: [planTerapeuticoId], references: [id])
+  profesionalId     String
+  profesional       Profesional @relation(fields: [profesionalId], references: [id])
+
+  // Tipo de log
+  tipo              TipoLogClinico
+
+  // Contenido
+  titulo            String?
+  contenido         String   @db.Text
+
+  // Datos estructurados (JSON)
+  datosEstructurados Json?   // Para escalas de dolor, ROM, etc.
+
+  // Visibilidad
+  visiblePaciente   Boolean  @default(false)
+
+  // Archivos adjuntos
+  adjuntos          String[] // URLs de archivos
+
+  // Timestamps
+  fecha             DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([sesionId])
+  @@index([planTerapeuticoId])
+  @@map("logs_clinicos")
+}
+
+enum TipoLogClinico {
+  NOTA_SESION       // Nota de la sesión
+  EVOLUCION         // Nota de evolución general
+  EVALUACION        // Evaluación formal
+  OBJETIVO_LOGRADO  // Registro de objetivo alcanzado
+  ALERTA            // Alerta clínica
+  INTERCONSULTA     // Derivación/interconsulta
+  OTRO
+}
+
+// ============================================================================
+// EVALUACIONES (Escalas, Tests)
+// ============================================================================
+
+model Evaluacion {
+  id                String   @id @default(cuid())
+
+  planTerapeuticoId String
+  planTerapeutico   PlanTerapeutico @relation(fields: [planTerapeuticoId], references: [id])
+
+  // Tipo de evaluación
+  tipo              String   // Ej: "EVA", "SF-36", "DASH", etc.
+  nombre            String
+
+  // Resultados
+  puntaje           Decimal? @db.Decimal(10, 2)
+  puntajeMaximo     Decimal? @db.Decimal(10, 2)
+  interpretacion    String?
+
+  // Datos completos
+  respuestas        Json?    // Respuestas detalladas
+
+  // Timestamps
+  fecha             DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  @@index([planTerapeuticoId])
+  @@map("evaluaciones")
+}
+
+// ============================================================================
+// AUDITORÍA
+// ============================================================================
+
+model AuditLog {
+  id                String   @id @default(cuid())
+
+  userId            String?
+  user              User?    @relation(fields: [userId], references: [id])
+
+  // Acción
+  action            String   // CREATE, UPDATE, DELETE, LOGIN, etc.
+  entity            String   // Nombre de la entidad afectada
+  entityId          String?  // ID de la entidad
+
+  // Cambios
+  oldValues         Json?
+  newValues         Json?
+
+  // Contexto
+  ipAddress         String?
+  userAgent         String?
+
+  // Timestamp
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================================================
+// SINCRONIZACIÓN MEDILINK
+// ============================================================================
+
+model SyncLog {
+  id                String   @id @default(cuid())
+  tenantId          String
+
+  // Tipo de sincronización
+  entityType        String   // pacientes, sesiones, boletas, etc.
+
+  // Resultado
+  status            SyncStatus
+  itemsProcessed    Int      @default(0)
+  itemsCreated      Int      @default(0)
+  itemsUpdated      Int      @default(0)
+  itemsSkipped      Int      @default(0)
+  errors            Json?    // Array de errores
+
+  // Timestamps
+  startedAt         DateTime
+  completedAt       DateTime?
+
+  @@index([tenantId, entityType])
+  @@index([startedAt])
+  @@map("sync_logs")
+}
+
+enum SyncStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+// ============================================================================
+// CONFIGURACIÓN Y NOTIFICACIONES
+// ============================================================================
+
+model Notification {
+  id                String   @id @default(cuid())
+  tenantId          String
+
+  // Destinatario
+  userId            String
+
+  // Contenido
+  type              String   // PAGO_RECIBIDO, SESION_PROXIMA, etc.
+  title             String
+  message           String
+  data              Json?    // Datos adicionales
+
+  // Estado
+  read              Boolean  @default(false)
+  readAt            DateTime?
+
+  // Canal
+  channel           String   @default("IN_APP") // IN_APP, EMAIL, SMS
+  sent              Boolean  @default(false)
+  sentAt            DateTime?
+
+  createdAt         DateTime @default(now())
+
+  @@index([userId, read])
+  @@map("notifications")
+}

@@ -1,0 +1,359 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-heal-200;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-heal-50/50 text-heal-900 antialiased font-sans;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-heal-300 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-heal-400;
+  }
+
+  /* Focus styles */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-heal-500/40 ring-offset-2;
+  }
+}
+
+@layer components {
+  /* ========================================
+     BUTTONS
+     ======================================== */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium
+           transition-all duration-200 ease-out
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none
+           active:scale-[0.98];
+  }
+
+  .btn-primary {
+    @apply btn bg-heal-600 text-white shadow-soft
+           hover:bg-heal-700 hover:shadow-soft-lg hover:-translate-y-0.5
+           focus-visible:ring-heal-500;
+  }
+
+  .btn-secondary {
+    @apply btn bg-white text-heal-700 border border-heal-200 shadow-soft
+           hover:bg-heal-50 hover:border-heal-300 hover:shadow-soft-lg
+           focus-visible:ring-heal-500;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-500 text-white shadow-soft
+           hover:bg-red-600 hover:shadow-soft-lg hover:-translate-y-0.5
+           focus-visible:ring-red-500;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-heal-600
+           hover:bg-heal-100 hover:text-heal-700
+           focus-visible:ring-heal-500;
+  }
+
+  .btn-sage {
+    @apply btn bg-sage-500 text-white shadow-soft
+           hover:bg-sage-600 hover:shadow-soft-lg hover:-translate-y-0.5
+           focus-visible:ring-sage-500;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-base rounded-2xl;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs rounded-lg;
+  }
+
+  .btn-icon {
+    @apply p-2.5 rounded-xl;
+  }
+
+  /* ========================================
+     INPUTS
+     ======================================== */
+  .input {
+    @apply w-full rounded-xl border border-heal-200 bg-white px-4 py-2.5 text-sm
+           shadow-inner-soft
+           placeholder:text-heal-400
+           transition-all duration-200
+           hover:border-heal-300
+           focus:border-heal-500 focus:outline-none focus:ring-2 focus:ring-heal-500/20
+           disabled:bg-heal-100 disabled:cursor-not-allowed;
+  }
+
+  .input-lg {
+    @apply px-5 py-3 text-base rounded-2xl;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-heal-700 mb-1.5;
+  }
+
+  .label-sm {
+    @apply text-xs text-heal-500;
+  }
+
+  /* ========================================
+     CARDS
+     ======================================== */
+  .card {
+    @apply bg-white rounded-2xl border border-heal-100 shadow-soft
+           transition-all duration-300;
+  }
+
+  .card-hover {
+    @apply card hover:shadow-soft-lg hover:-translate-y-0.5 cursor-pointer;
+  }
+
+  .card-interactive {
+    @apply card hover:shadow-glow hover:border-heal-300 cursor-pointer;
+  }
+
+  .card-glass {
+    @apply bg-white/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-soft;
+  }
+
+  /* ========================================
+     BADGES
+     ======================================== */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium
+           transition-colors duration-200;
+  }
+
+  .badge-success {
+    @apply badge bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20;
+  }
+
+  .badge-warning {
+    @apply badge bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-600/20;
+  }
+
+  .badge-error {
+    @apply badge bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20;
+  }
+
+  .badge-info {
+    @apply badge bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20;
+  }
+
+  .badge-gray {
+    @apply badge bg-heal-100 text-heal-600 ring-1 ring-inset ring-heal-500/20;
+  }
+
+  .badge-sage {
+    @apply badge bg-sage-50 text-sage-700 ring-1 ring-inset ring-sage-600/20;
+  }
+
+  /* ========================================
+     TABLES
+     ======================================== */
+  .table-header {
+    @apply bg-heal-50/50 border-b border-heal-100;
+  }
+
+  .table-header th {
+    @apply px-4 py-3 text-left text-xs font-semibold text-heal-500 uppercase tracking-wider;
+  }
+
+  .table-row {
+    @apply border-b border-heal-50 transition-colors duration-150
+           hover:bg-heal-50/50;
+  }
+
+  .table-row td {
+    @apply px-4 py-3.5;
+  }
+
+  /* ========================================
+     SKELETON LOADING
+     ======================================== */
+  .skeleton {
+    @apply bg-gradient-to-r from-heal-100 via-heal-50 to-heal-100 bg-[length:200%_100%]
+           animate-shimmer rounded-lg;
+  }
+
+  /* ========================================
+     TYPOGRAPHY
+     ======================================== */
+  .heading-1 {
+    @apply font-display text-3xl font-bold text-heal-900 tracking-tight;
+  }
+
+  .heading-2 {
+    @apply font-display text-2xl font-semibold text-heal-900 tracking-tight;
+  }
+
+  .heading-3 {
+    @apply font-display text-xl font-semibold text-heal-800;
+  }
+
+  .heading-4 {
+    @apply font-display text-lg font-medium text-heal-800;
+  }
+
+  .text-muted {
+    @apply text-heal-500;
+  }
+
+  /* ========================================
+     QUICK ACTIONS
+     ======================================== */
+  .quick-action {
+    @apply flex flex-col items-center justify-center gap-3 p-6 rounded-2xl
+           bg-white border border-heal-100 shadow-soft
+           transition-all duration-300 ease-out cursor-pointer
+           hover:shadow-glow hover:border-heal-300 hover:-translate-y-1
+           active:scale-[0.98];
+  }
+
+  .quick-action-icon {
+    @apply w-12 h-12 rounded-xl flex items-center justify-center
+           transition-transform duration-300;
+  }
+
+  .quick-action:hover .quick-action-icon {
+    @apply scale-110;
+  }
+
+  /* ========================================
+     NAVIGATION
+     ======================================== */
+  .nav-link {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium
+           transition-all duration-200 ease-out
+           text-heal-400 hover:text-white hover:bg-white/10;
+  }
+
+  .nav-link-active {
+    @apply nav-link bg-white/15 text-white shadow-inner-soft;
+  }
+
+  /* ========================================
+     STAT CARDS
+     ======================================== */
+  .stat-card {
+    @apply card p-5 flex items-start gap-4;
+  }
+
+  .stat-icon {
+    @apply w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0;
+  }
+
+  .stat-value {
+    @apply font-display text-2xl font-bold text-heal-900;
+  }
+
+  .stat-label {
+    @apply text-sm text-heal-500;
+  }
+
+  /* ========================================
+     ALERTS
+     ======================================== */
+  .alert {
+    @apply flex items-start gap-3 p-4 rounded-xl border;
+  }
+
+  .alert-warning {
+    @apply alert bg-amber-50/50 border-amber-200 text-amber-800;
+  }
+
+  .alert-error {
+    @apply alert bg-red-50/50 border-red-200 text-red-800;
+  }
+
+  .alert-success {
+    @apply alert bg-emerald-50/50 border-emerald-200 text-emerald-800;
+  }
+
+  .alert-info {
+    @apply alert bg-blue-50/50 border-blue-200 text-blue-800;
+  }
+
+  /* ========================================
+     MODAL
+     ======================================== */
+  .modal-overlay {
+    @apply fixed inset-0 bg-heal-950/40 backdrop-blur-sm z-50
+           animate-fade-in;
+  }
+
+  .modal-content {
+    @apply fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
+           bg-white rounded-3xl shadow-soft-lg p-6 z-50
+           w-full max-w-lg max-h-[90vh] overflow-y-auto
+           animate-scale-in;
+  }
+
+  /* ========================================
+     TOAST
+     ======================================== */
+  .toast {
+    @apply fixed bottom-6 right-6 z-50 flex items-center gap-3
+           px-4 py-3 rounded-xl shadow-soft-lg
+           animate-slide-in-left;
+  }
+
+  .toast-success {
+    @apply toast bg-emerald-600 text-white;
+  }
+
+  .toast-error {
+    @apply toast bg-red-600 text-white;
+  }
+
+  .toast-info {
+    @apply toast bg-heal-600 text-white;
+  }
+
+  /* ========================================
+     EMPTY STATE
+     ======================================== */
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-16 px-4 text-center;
+  }
+
+  .empty-state-icon {
+    @apply w-16 h-16 rounded-full bg-heal-100 flex items-center justify-center
+           text-heal-400 mb-4;
+  }
+
+  /* ========================================
+     ANIMATIONS - Staggered reveals
+     ======================================== */
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.1s; }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.2s; }
+  .stagger-5 { animation-delay: 0.25s; }
+  .stagger-6 { animation-delay: 0.3s; }
+  .stagger-7 { animation-delay: 0.35s; }
+  .stagger-8 { animation-delay: 0.4s; }
+}
