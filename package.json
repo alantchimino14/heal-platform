@@ -14,7 +14,11 @@
     "db:seed": "pnpm --filter database db:seed"
   },
   "devDependencies": {
+    "playwright": "^1.58.0",
     "turbo": "^2.0.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "docx": "^9.5.1"
   }
 }
