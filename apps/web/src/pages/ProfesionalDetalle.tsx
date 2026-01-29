@@ -18,7 +18,6 @@ import {
   Award,
   Clock,
   AlertCircle,
-  ChevronRight,
   Briefcase,
   Phone,
   Mail,
@@ -791,7 +790,7 @@ function TabMetas({ profesionalId }: { profesionalId: string }) {
 function TabLiquidaciones({ profesionalId }: { profesionalId: string }) {
   const { data: liquidaciones, isLoading } = useProfesionalLiquidaciones(profesionalId, { limit: 12 });
   const [showGenerarForm, setShowGenerarForm] = useState(false);
-  const [selectedLiquidacion, setSelectedLiquidacion] = useState<string | null>(null);
+  const [, setSelectedLiquidacion] = useState<string | null>(null);
 
   const generarLiquidacion = useGenerarLiquidacion();
   const aprobarLiquidacion = useAprobarLiquidacion();
