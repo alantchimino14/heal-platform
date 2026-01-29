@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: heal-api
+    runtime: node
+    rootDir: apps/api
+    buildCommand: cd ../.. && pnpm install && pnpm build --filter=api
+    startCommand: node dist/main.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        value: https://heal-chile.vercel.app
+      - key: DATABASE_URL
+        sync: false
